@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HDHub5U | Movie Library</title>
+<style>
+:root{color-scheme:dark;--bg:#0d0f14;--panel:#171b24;--muted:#a9b0bf;--accent:#ef233c;--line:#2b3040}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:#f7f8fb;font-family:Arial,sans-serif}
+header{padding:24px 5%;background:linear-gradient(120deg,#171b24,#350b15);border-bottom:1px solid var(--line)}
+.brand{font-weight:900;font-size:36px}.brand span{color:var(--accent)}header p,.muted{color:var(--muted)}
+main{max-width:1200px;margin:auto;padding:24px 16px}.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+input,textarea,button{font:inherit;border-radius:9px;padding:12px;border:1px solid var(--line)}
+input,textarea{background:#0e1118;color:white;width:100%}textarea{min-height:90px}
+button{background:var(--accent);border:0;color:white;font-weight:bold;cursor:pointer}button.secondary{background:#303747}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;margin:20px 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:16px;margin-top:18px}
+.card{overflow:hidden;background:var(--panel);border:1px solid var(--line);border-radius:12px}.poster{width:100%;height:260px;object-fit:cover;background:#252a35;display:block}
+.cardbody{padding:13px}.card h3{margin:0 0 8px}.card p{color:var(--muted);font-size:14px;white-space:pre-wrap}
+.hidden{display:none!important}.status{padding:10px 0;color:#ffd166;white-space:pre-wrap}.formgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.full{grid-column:1/-1}
+footer{text-align:center;padding:25px;color:var(--muted);border-top:1px solid var(--line)}@media(max-width:600px){.formgrid{grid-template-columns:1fr}.full{grid-column:auto}}
+</style></head>
+<body><header><div class="brand">HDHub<span>5U</span></div><p>A movie library for titles and authorized viewing links.</p></header>
+<main>
+<section><div class="row"><input id="search" placeholder="Search movie titles..." style="flex:1;min-width:200px"><button id="refreshBtn" class="secondary">Refresh</button></div><div id="status" class="status">Setup needed: add your Supabase URL and publishable key in this file.</div><div id="movies" class="grid"></div></section>
+<section class="panel"><h2>Admin sign in</h2><p class="muted">Sign in using the account you created in Supabase. Only a UID listed in the admins table can publish.</p>
+<form id="loginForm" class="row"><input id="email" type="email" placeholder="Admin email" required style="flex:1;min-width:200px"><input id="password" type="password" placeholder="Password" required style="flex:1;min-width:200px"><button>Sign in</button><button type="button" id="logoutBtn" class="secondary hidden">Sign out</button></form><div id="authStatus" class="status"></div></section>
+<section id="adminPanel" class="panel hidden"><h2>Publish a movie listing</h2><p class="muted">Only add content and links you own or are authorized to distribute.</p>
+<form id="movieForm" class="formgrid"><label>Movie title<input id="title" maxlength="180" required></label><label>Release year<input id="year" type="number" min="1888" max="2100"></label><label class="full">Poster image URL<input id="poster" type="url" placeholder="https://..."></label><label class="full">Description<textarea id="description" maxlength="3000"></textarea></label><label class="full">Authorized viewing link<input id="movieLink" type="url" required placeholder="https://..."></label><div class="full"><button id="publishBtn">Publish listing</button></div></form><div id="publishStatus" class="status"></div><h3>Your listings</h3><div id="adminListings"></div></section>
+</main><footer>HDHub5U · Movie listings and authorized links</footer>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SUPABASE_URL = 'https://jguzrxaxizqdqdfwdink.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_W9ca6JpKpNU2GJlH4UL0hA_OdU2dpqd';
+const $=id=>document.getElementById(id);let db=null,user=null,isAdmin=false,allMovies=[];
+function safeUrl(v){try{let u=new URL(v);return ['https:','http:'].includes(u.protocol)?u.href:''}catch{return ''}}
+function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function render(){let q=$('search').value.trim().toLowerCase();let list=allMovies.filter(m=>String(m.title).toLowerCase().includes(q));$('movies').innerHTML=list.map(m=>{let p=safeUrl(m.poster_url),l=safeUrl(m.movie_url);return `<article class="card">${p?`<img class="poster" loading="lazy" src="${esc(p)}" alt="Poster" onerror="this.style.display='none'">`:'<div class="poster"></div>'}<div class="cardbody"><h3>${esc(m.title)}${m.release_year?' ('+esc(m.release_year)+')':''}</h3><p>${esc(m.description||'')}</p>${l?`<a href="${esc(l)}" target="_blank" rel="noopener noreferrer"><button>Watch / Visit</button></a>`:''}</div></article>`}).join('')||'<p class="muted">No published titles found.</p>'}
+function status(s){$('status').textContent=s}
+async function load(){if(!db)return;let {data,error}=await db.from('movies').select('id,title,poster_url,description,release_year,movie_url,created_at,published').eq('published',true).order('created_at',{ascending:false});if(error){status('Could not load listings: '+error.message);return}allMovies=data||[];render();if(isAdmin)adminList();status(allMovies.length+' published listing(s).')}
+function adminList(){$('adminListings').innerHTML=allMovies.map(m=>`<div class="row" style="justify-content:space-between;border-top:1px solid #2b3040;padding:10px 0"><span>${esc(m.title)}</span><button class="secondary" data-del="${Number(m.id)}">Delete</button></div>`).join('')||'<p class="muted">No listings yet.</p>';$('adminListings').querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{if(confirm('Delete this listing?')){let {error}=await db.from('movies').delete().eq('id',Number(b.dataset.del));$('publishStatus').textContent=error?'Delete failed: '+error.message:'Deleted.';if(!error)load()}})}
+async function session(){if(!db)return;let {data}=await db.auth.getSession();user=data.session?.user||null;isAdmin=false;if(user){let {data:r,error}=await db.from('admins').select('user_id').eq('user_id',user.id).maybeSingle();isAdmin=!!r&&!error}$('adminPanel').classList.toggle('hidden',!isAdmin);$('logoutBtn').classList.toggle('hidden',!user);$('authStatus').textContent=!user?'Not signed in.':isAdmin?'Admin sign-in successful.':'Signed in, but this account is not an admin.';if(isAdmin)adminList()}
+$('search').oninput=render;$('refreshBtn').onclick=load;
+$('loginForm').onsubmit=async e=>{e.preventDefault();if(!db)return;let {error}=await db.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});$('authStatus').textContent=error?'Sign-in failed: '+error.message:'Signed in.';$('password').value='';if(!error){await session();await load()}};
+$('logoutBtn').onclick=async()=>{await db.auth.signOut();await session()};
+$('movieForm').onsubmit=async e=>{e.preventDefault();if(!isAdmin)return;let link=safeUrl($('movieLink').value.trim()),poster=$('poster').value.trim()?safeUrl($('poster').value.trim()):null;if(!link||($('poster').value.trim()&&!poster)){$('publishStatus').textContent='Enter valid http(s) URLs.';return}$('publishBtn').disabled=true;let {error}=await db.from('movies').insert({title:$('title').value.trim(),release_year:$('year').value?Number($('year').value):null,poster_url:poster,description:$('description').value.trim()||null,movie_url:link,published:true,user_id:user.id});$('publishBtn').disabled=false;$('publishStatus').textContent=error?'Publish failed: '+error.message:'Published! Visitors can now see the listing.';if(!error){$('movieForm').reset();await load()}};
+if(!SUPABASE_URL.startsWith('https://')||SUPABASE_URL.includes('YOUR_SUPABASE')||SUPABASE_ANON_KEY.includes('YOUR_SUPABASE')){status('Setup needed: replace the two Supabase placeholders near the bottom of index.html.')}
+else if(window.supabase?.createClient){db=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);(async()=>{await session();await load()})();db.auth.onAuthStateChange(()=>setTimeout(session,0))}
+else status('Supabase library did not load. Check your internet connection.');
+</script></body></html>
